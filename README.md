@@ -1,2 +1,1 @@
-# kambate-backend
-
+# ⚙️ Kambate Backend: API, Scrapers y Ingesta
