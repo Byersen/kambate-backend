@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+enum EventStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  CANCELED
+}
+
+// -----------------------------------------------------------------------------
+// CORE MODELS (Feed Unificado)
+// -----------------------------------------------------------------------------
+model Sport {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g., "Football", "NBA", "UFC", "League of Legends"
+  slug      String   @unique // e.g., "football", "nba", "ufc", "lol"
+  
+  events    Event[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  externalId  String?     @unique // ID en la API externa de tu proveedor (para evitar duplicados)
+  sportId     String
+  sport       Sport       @relation(fields: [sportId], references: [id])
+  startDate   DateTime    
+  status      EventStatus @default(SCHEDULED)
+  
+  // Score rápido unificado (ej. "2-1", "102-98", "KO") para el feed principal
+  score       String?     
+
+  participants Participant[]
+  
+  // Relaciones con Estadísticas Específicas
+  footballStats FootballStats?
+  nbaStats      NbaStats?
+  ufcStats      UfcStats?
+  esportsStats  EsportsStats?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Participant {
+  id        String   @id @default(uuid())
+  name      String   // Nombre del equipo, club o atleta
+  logoUrl   String?
+  
+  // Relación Many-to-Many con Event
+  events    Event[]  
+
+  // Favoritos
+  favoritedBy UserFavorite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -----------------------------------------------------------------------------
+// STATS MODELS (Especializados por Deporte)
+// -----------------------------------------------------------------------------
+model FootballStats {
+  id             String  @id @default(uuid())
+  eventId        String  @unique
+  event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  homeGoals      Int?
+  awayGoals      Int?
+  homeCards      Int?
+  awayCards      Int?
+  
+  // JSON flexible para datos impredecibles (goleadores, posesión, etc)
+  extraStats     Json?
+}
+
+model NbaStats {
+  id             String  @id @default(uuid())
+  eventId        String  @unique
+  event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  homePoints     Int?
+  awayPoints     Int?
+  quarter        Int?    // Ej: 1, 2, 3, 4
+}
+
+model UfcStats {
+  id             String  @id @default(uuid())
+  eventId        String  @unique
+  event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  method         String? // Ej: "KO/TKO", "Submission", "Decision"
+  round          Int?
+  time           String? // "2:45"
+}
+
+model EsportsStats {
+  id             String  @id @default(uuid())
+  eventId        String  @unique
+  event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  homeScore      Int?
+  awayScore      Int?
+  map            String? // Nombre del mapa o juego
+}
+
+// -----------------------------------------------------------------------------
+// USERS & FAVORITES
+// -----------------------------------------------------------------------------
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String
+  name         String?
+  
+  favorites    UserFavorite[]
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model UserFavorite {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+
+  // Un usuario no puede agregar a favoritos el mismo participante dos veces
+  @@unique([userId, participantId]) 
+}

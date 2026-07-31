@@ -2,3 +2,10 @@ node_modules/
 dist/
 .env
 .env.*
+/generated/prisma
+
+# AI Agents / IDE Config
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
