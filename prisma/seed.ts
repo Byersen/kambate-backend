@@ -7,7 +7,6 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Iniciando el seeding de la base de datos...');
 
-  // 1. Crear Deportes (Sports)
   const football = await prisma.sport.upsert({
     where: { slug: 'football' },
     update: {},
@@ -32,7 +31,6 @@ async function main() {
     create: { name: 'Esports (LoL/Valorant)', slug: 'esports' },
   });
 
-  // 2. Crear Participantes (Equipos / Peleadores)
   const realMadrid = await prisma.participant.create({ data: { name: 'Real Madrid', logoUrl: 'https://ejemplo.com/rm.png' } });
   const barcelona = await prisma.participant.create({ data: { name: 'FC Barcelona', logoUrl: 'https://ejemplo.com/barca.png' } });
   
@@ -41,10 +39,7 @@ async function main() {
 
   const mcgregor = await prisma.participant.create({ data: { name: 'Conor McGregor' } });
   const poirier = await prisma.participant.create({ data: { name: 'Dustin Poirier' } });
-
-  // 3. Crear Eventos con sus Estadísticas Especializadas
   
-  // Evento de Fútbol
   await prisma.event.create({
     data: {
       sportId: football.id,
@@ -66,7 +61,6 @@ async function main() {
     }
   });
 
-  // Evento de NBA
   await prisma.event.create({
     data: {
       sportId: nba.id,
@@ -86,7 +80,6 @@ async function main() {
     }
   });
 
-  // Evento de UFC
   await prisma.event.create({
     data: {
       sportId: ufc.id,

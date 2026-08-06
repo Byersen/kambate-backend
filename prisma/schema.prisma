@@ -21,8 +21,8 @@ enum EventStatus {
 // -----------------------------------------------------------------------------
 model Sport {
   id        String   @id @default(uuid())
-  name      String   @unique // e.g., "Football", "NBA", "UFC", "League of Legends"
-  slug      String   @unique // e.g., "football", "nba", "ufc", "lol"
+  name      String   @unique
+  slug      String   @unique
   
   events    Event[]
   
@@ -32,18 +32,15 @@ model Sport {
 
 model Event {
   id          String      @id @default(uuid())
-  externalId  String?     @unique // ID en la API externa de tu proveedor (para evitar duplicados)
+  externalId  String?     @unique
   sportId     String
   sport       Sport       @relation(fields: [sportId], references: [id])
   startDate   DateTime    
   status      EventStatus @default(SCHEDULED)
-  
-  // Score rápido unificado (ej. "2-1", "102-98", "KO") para el feed principal
   score       String?     
 
   participants Participant[]
   
-  // Relaciones con Estadísticas Específicas
   footballStats FootballStats?
   nbaStats      NbaStats?
   ufcStats      UfcStats?
@@ -56,13 +53,10 @@ model Event {
 model Participant {
   id          String   @id @default(uuid())
   externalId  String?
-  name        String   // Nombre del equipo, club o atleta
+  name        String
   logoUrl     String?
   
-  // Relación Many-to-Many con Event
   events      Event[]  
-
-  // Favoritos
   favoritedBy UserFavorite[]
 
   createdAt   DateTime @default(now())
@@ -70,7 +64,7 @@ model Participant {
 }
 
 // -----------------------------------------------------------------------------
-// STATS MODELS (Especializados por Deporte)
+// STATS MODELS
 // -----------------------------------------------------------------------------
 model FootballStats {
   id             String  @id @default(uuid())
@@ -81,8 +75,6 @@ model FootballStats {
   awayGoals      Int?
   homeCards      Int?
   awayCards      Int?
-  
-  // JSON flexible para datos impredecibles (goleadores, posesión, etc)
   extraStats     Json?
 }
 
@@ -93,7 +85,7 @@ model NbaStats {
   
   homePoints     Int?
   awayPoints     Int?
-  quarter        Int?    // Ej: 1, 2, 3, 4
+  quarter        Int?
 }
 
 model UfcStats {
@@ -101,9 +93,9 @@ model UfcStats {
   eventId        String  @unique
   event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
   
-  method         String? // Ej: "KO/TKO", "Submission", "Decision"
+  method         String?
   round          Int?
-  time           String? // "2:45"
+  time           String?
 }
 
 model EsportsStats {
@@ -113,7 +105,7 @@ model EsportsStats {
   
   homeScore      Int?
   awayScore      Int?
-  map            String? // Nombre del mapa o juego
+  map            String?
 }
 
 // -----------------------------------------------------------------------------
@@ -153,6 +145,5 @@ model UserFavorite {
 
   createdAt     DateTime    @default(now())
 
-  // Un usuario no puede agregar a favoritos el mismo participante dos veces
   @@unique([userId, participantId]) 
 }
