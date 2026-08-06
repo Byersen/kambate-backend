@@ -54,18 +54,19 @@ model Event {
 }
 
 model Participant {
-  id        String   @id @default(uuid())
-  name      String   // Nombre del equipo, club o atleta
-  logoUrl   String?
+  id          String   @id @default(uuid())
+  externalId  String?
+  name        String   // Nombre del equipo, club o atleta
+  logoUrl     String?
   
   // Relación Many-to-Many con Event
-  events    Event[]  
+  events      Event[]  
 
   // Favoritos
   favoritedBy UserFavorite[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // -----------------------------------------------------------------------------
@@ -113,6 +114,18 @@ model EsportsStats {
   homeScore      Int?
   awayScore      Int?
   map            String? // Nombre del mapa o juego
+}
+
+// -----------------------------------------------------------------------------
+// AUDIT & LOGS
+// -----------------------------------------------------------------------------
+model ScraperLog {
+  id         String   @id @default(uuid())
+  sport      String
+  success    Boolean  @default(true)
+  message    String?
+  itemsCount Int?     @default(0)
+  createdAt  DateTime @default(now())
 }
 
 // -----------------------------------------------------------------------------
