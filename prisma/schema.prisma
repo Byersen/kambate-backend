@@ -14,6 +14,7 @@ enum EventStatus {
   LIVE
   FINISHED
   CANCELED
+  ARCHIVED
 }
 
 // -----------------------------------------------------------------------------
@@ -24,34 +25,83 @@ model Sport {
   name      String   @unique
   slug      String   @unique
   
+  leagues   League[]
   events    Event[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Event {
-  id          String      @id @default(uuid())
-  externalId  String?     @unique
-  sportId     String
-  sport       Sport       @relation(fields: [sportId], references: [id])
-  startDate   DateTime    
-  status      EventStatus @default(SCHEDULED)
-  score       String?     
+model League {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  country     String?
+  logoUrl     String?
+  tier        Int      @default(1) // 1: Top/Premium, 2: Secundario, 0: Ignorado
+  isActive    Boolean  @default(true) // Control para descartar ligas no deseadas
 
-  participants Participant[]
+  sportId     String
+  sport       Sport    @relation(fields: [sportId], references: [id], onDelete: Cascade)
+
+  events      Event[]
+  favoritedBy UserFavoriteLeague[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sportId, isActive])
+  @@index([tier])
+}
+
+model Season {
+  id          String    @id @default(uuid())
+  name        String    // ej. "2024-2025"
+  slug        String    @unique // ej. "2024-2025"
+  isCurrent   Boolean   @default(true)
+  startDate   DateTime?
+  endDate     DateTime?
+
+  events      Event[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Event {
+  id            String         @id @default(uuid())
+  externalId    String?        @unique
+  
+  sportId       String
+  sport         Sport          @relation(fields: [sportId], references: [id])
+
+  leagueId      String?
+  league        League?        @relation(fields: [leagueId], references: [id], onDelete: SetNull)
+
+  seasonId      String?
+  season        Season?        @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+
+  startDate     DateTime    
+  status        EventStatus    @default(SCHEDULED)
+  score         String?     
+
+  participants  Participant[]
   
   footballStats FootballStats?
   nbaStats      NbaStats?
   ufcStats      UfcStats?
   esportsStats  EsportsStats?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status, startDate])
+  @@index([leagueId])
+  @@index([seasonId])
 }
 
 model Participant {
-  id          String   @id @default(uuid())
+  id          String         @id @default(uuid())
   externalId  String?
   name        String
   logoUrl     String?
@@ -59,8 +109,8 @@ model Participant {
   events      Event[]  
   favoritedBy UserFavorite[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 }
 
 // -----------------------------------------------------------------------------
@@ -121,18 +171,33 @@ model ScraperLog {
 }
 
 // -----------------------------------------------------------------------------
-// USERS & FAVORITES
+// USERS, PREFERENCES & FAVORITES
 // -----------------------------------------------------------------------------
 model User {
-  id           String         @id @default(uuid())
-  email        String         @unique
-  passwordHash String
-  name         String?
+  id               String               @id @default(uuid())
+  email            String               @unique
+  passwordHash     String
+  name             String?
   
-  favorites    UserFavorite[]
+  preferences      UserPreference?
+  favoriteTeams    UserFavorite[]
+  favoriteLeagues  UserFavoriteLeague[]
 
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+}
+
+model UserPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  selectedSports  String[] @default([]) // ej. ["football", "nba"]
+  onboardingDone  Boolean  @default(false)
+  notifyLive      Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model UserFavorite {
@@ -146,4 +211,17 @@ model UserFavorite {
   createdAt     DateTime    @default(now())
 
   @@unique([userId, participantId]) 
+}
+
+model UserFavoriteLeague {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  leagueId  String
+  league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, leagueId])
 }
