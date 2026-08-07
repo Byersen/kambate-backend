@@ -1,43 +1,102 @@
-import { Controller, Post, Get, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Param,
+  Query,
+  Body,
+} from '@nestjs/common';
 import { ScrapersService } from './scrapers.service';
+import { ScrapersQueueService } from './scrapers-queue.service';
 
 @Controller('scrapers')
 export class ScrapersController {
-  constructor(private readonly scrapersService: ScrapersService) {}
+  constructor(
+    private readonly scrapersService: ScrapersService,
+    private readonly queueService: ScrapersQueueService,
+  ) {}
 
-  /**
-   * Sincroniza todas las disciplinas soportadas
-   * POST /scrapers/sync-all
-   */
   @Post('sync-all')
   async syncAll() {
     const results = await this.scrapersService.syncAll();
     return {
-      message: 'Sincronización general completada',
+      message: 'Sincronizacion general completada',
       results,
     };
   }
 
-  /**
-   * Sincroniza un deporte en particular (nba, football, ufc, esports)
-   * POST /scrapers/sync/:sport
-   */
   @Post('sync/:sport')
   async syncSport(@Param('sport') sport: string) {
     const result = await this.scrapersService.syncSport(sport);
     return {
-      message: `Sincronización de ${sport} completada`,
+      message: `Sincronizacion de ${sport} completada`,
       result,
     };
   }
 
-  /**
-   * Obtiene la bitácora de auditoría de los scrapers
-   * GET /scrapers/logs?limit=20
-   */
+  @Post('queue/sync-all')
+  async queueSyncAll() {
+    return this.queueService.queueSyncAll();
+  }
+
+  @Post('queue/sync/:sport')
+  async queueSyncSport(@Param('sport') sport: string) {
+    return this.queueService.queueSyncSport(sport);
+  }
+
+  @Get('queue/metrics')
+  async getQueueMetrics() {
+    return this.queueService.getQueueMetrics();
+  }
+
+  @Get('leagues')
+  async getLeagues(@Query('sport') sport?: string) {
+    return this.scrapersService.getLeagues(sport);
+  }
+
+  @Post('leagues/:slug/status')
+  async setLeagueStatus(
+    @Param('slug') slug: string,
+    @Body('isActive') isActive: boolean,
+  ) {
+    return this.scrapersService.setLeagueStatus(slug, isActive ?? true);
+  }
+
+  @Delete('seasons/purge')
+  async purgeSeasonData(@Query('season') seasonSlug?: string) {
+    return this.scrapersService.purgeSeasonData(seasonSlug);
+  }
+
+  @Post('seasons/start-new')
+  async startNewSeason(
+    @Body()
+    body: {
+      name: string;
+      slug: string;
+      startDate?: string;
+      endDate?: string;
+      purgePreviousData?: boolean;
+    },
+  ) {
+    return this.scrapersService.startNewSeason({
+      name: body.name,
+      slug: body.slug,
+      startDate: body.startDate ? new Date(body.startDate) : undefined,
+      endDate: body.endDate ? new Date(body.endDate) : undefined,
+      purgePreviousData: body.purgePreviousData ?? true,
+    });
+  }
+
   @Get('logs')
   async getLogs(@Query('limit') limit?: string) {
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
     return this.scrapersService.getLogs(parsedLimit);
+  }
+
+  @Delete('logs/cleanup')
+  async cleanupLogs(@Query('days') days?: string) {
+    const daysToKeep = days ? parseInt(days, 10) : 30;
+    return this.scrapersService.cleanupLogs(daysToKeep);
   }
 }
