@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventStatus } from '@prisma/client';
-import { SyncResult, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
+import { SyncResult, SyncOptions, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
 
 export abstract class BaseScraper {
   protected abstract readonly logger: Logger;
@@ -10,11 +10,8 @@ export abstract class BaseScraper {
 
   constructor(protected readonly prisma: PrismaService) {}
 
-  abstract sync(): Promise<SyncResult>;
+  abstract sync(options?: SyncOptions): Promise<SyncResult>;
 
-  /**
-   * Obtiene o crea la entidad Sport correspondiente
-   */
   protected async getOrCreateSport() {
     return this.prisma.sport.upsert({
       where: { slug: this.sportSlug },
@@ -26,9 +23,6 @@ export abstract class BaseScraper {
     });
   }
 
-  /**
-   * Obtiene o crea un participante evitando duplicaciones
-   */
   protected async getOrCreateParticipant(data: {
     name: string;
     logoUrl?: string;
@@ -72,10 +66,34 @@ export abstract class BaseScraper {
     });
   }
 
-  /**
-   * Guarda o actualiza un evento unificado con sus estadísticas específicas
-   */
   protected async upsertUnifiedEvent(eventData: UnifiedScrapedEvent) {
+    let leagueId: string | undefined = undefined;
+
+    if (eventData.leagueSlug) {
+      const league = await this.prisma.league.findUnique({
+        where: { slug: eventData.leagueSlug },
+      });
+
+      if (league && !league.isActive) {
+        return null;
+      }
+
+      leagueId = league?.id;
+    }
+
+    let seasonId: string | undefined = undefined;
+    if (eventData.seasonSlug) {
+      const season = await this.prisma.season.findUnique({
+        where: { slug: eventData.seasonSlug },
+      });
+      seasonId = season?.id;
+    } else {
+      const currentSeason = await this.prisma.season.findFirst({
+        where: { isCurrent: true },
+      });
+      seasonId = currentSeason?.id;
+    }
+
     const sport = await this.getOrCreateSport();
 
     const participantRecords = [];
@@ -103,6 +121,8 @@ export abstract class BaseScraper {
           startDate: eventData.startDate,
           status: eventStatus,
           score: eventData.score,
+          leagueId: leagueId ?? existingEvent.leagueId,
+          seasonId: seasonId ?? existingEvent.seasonId,
           participants: {
             set: participantRecords.map((p) => ({ id: p.id })),
           },
@@ -141,6 +161,8 @@ export abstract class BaseScraper {
         data: {
           externalId: eventData.externalId,
           sportId: sport.id,
+          leagueId,
+          seasonId,
           startDate: eventData.startDate,
           status: eventStatus,
           score: eventData.score,
@@ -164,9 +186,6 @@ export abstract class BaseScraper {
     }
   }
 
-  /**
-   * Registra el resultado del scraping en la tabla ScraperLog
-   */
   protected async logExecution(success: boolean, itemsCount: number, message?: string) {
     try {
       await this.prisma.scraperLog.create({
@@ -178,7 +197,7 @@ export abstract class BaseScraper {
         },
       });
     } catch (err: any) {
-      this.logger.error(`Error guardando log de auditoría: ${err.message}`);
+      this.logger.error(`Error guardando log de auditoria: ${err.message}`);
     }
   }
 }

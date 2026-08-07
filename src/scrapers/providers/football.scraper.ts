@@ -1,16 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { BaseScraper } from './base.scraper';
-import { SyncResult, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
+import { SyncResult, SyncOptions, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
 import axios from 'axios';
 
 @Injectable()
 export class FootballScraperService extends BaseScraper {
   protected readonly logger = new Logger(FootballScraperService.name);
   protected readonly sportSlug = 'football';
-  protected readonly sportName = 'Fútbol';
+  protected readonly sportName = 'Futbol';
 
-  private readonly leagues = [
+  private readonly defaultLeagues = [
     'uefa.champions',
     'esp.1',
     'eng.1',
@@ -22,12 +22,31 @@ export class FootballScraperService extends BaseScraper {
     super(prisma);
   }
 
-  async sync(): Promise<SyncResult> {
-    this.logger.log('⚽ Iniciando sincronización de partidos de Fútbol...');
+  async sync(options?: SyncOptions): Promise<SyncResult> {
+    const targetTier = options?.tier;
+    const includeDetails = options?.includeDetails ?? true;
+
+    this.logger.log(
+      `Iniciando sincronizacion de Futbol (Tier: ${targetTier ?? 'Todos'}, Detalle: ${includeDetails ? 'Completo' : 'Basico'})...`,
+    );
     let itemsSynced = 0;
 
     try {
-      for (const league of this.leagues) {
+      const activeLeaguesInDb = await this.prisma.league.findMany({
+        where: {
+          sport: { slug: this.sportSlug },
+          isActive: true,
+          ...(targetTier ? { tier: targetTier } : {}),
+        },
+        select: { slug: true, tier: true },
+      });
+
+      const leaguesToFetch =
+        activeLeaguesInDb.length > 0
+          ? activeLeaguesInDb.map((l) => l.slug)
+          : this.defaultLeagues;
+
+      for (const league of leaguesToFetch) {
         try {
           const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard`;
           const response = await axios.get(url, { timeout: 8000 });
@@ -55,6 +74,7 @@ export class FootballScraperService extends BaseScraper {
               externalId: `football-espn-${event.id}`,
               sportSlug: this.sportSlug,
               sportName: this.sportName,
+              leagueSlug: league,
               startDate: new Date(event.date || competition.date),
               status,
               score: `${homeGoals} - ${awayGoals}`,
@@ -70,30 +90,34 @@ export class FootballScraperService extends BaseScraper {
                   externalId: `football-team-${awayCompetitor.id}`,
                 },
               ],
-              stats: {
-                football: {
-                  homeGoals,
-                  awayGoals,
-                  homeCards: 0,
-                  awayCards: 0,
-                  extraStats: {
-                    league: response.data?.leagues?.[0]?.name || league,
-                    clock: event.status?.displayClock,
+              ...(includeDetails && {
+                stats: {
+                  football: {
+                    homeGoals,
+                    awayGoals,
+                    homeCards: 0,
+                    awayCards: 0,
+                    extraStats: {
+                      league: response.data?.leagues?.[0]?.name || league,
+                      clock: event.status?.displayClock,
+                    },
                   },
                 },
-              },
+              }),
             };
 
-            await this.upsertUnifiedEvent(unifiedEvent);
-            itemsSynced++;
+            const saved = await this.upsertUnifiedEvent(unifiedEvent);
+            if (saved) {
+              itemsSynced++;
+            }
           }
         } catch (leagueErr: any) {
           this.logger.warn(`No se pudieron sincronizar datos para la liga ${league}: ${leagueErr.message}`);
         }
       }
 
-      this.logger.log(`✅ Sincronización de Fútbol finalizada: ${itemsSynced} partidos procesados.`);
-      await this.logExecution(true, itemsSynced, `Sincronizados ${itemsSynced} partidos de fútbol`);
+      this.logger.log(`Sincronizacion de Futbol finalizada: ${itemsSynced} partidos procesados.`);
+      await this.logExecution(true, itemsSynced, `Sincronizados ${itemsSynced} partidos de futbol`);
 
       return {
         sport: this.sportName,
@@ -102,7 +126,7 @@ export class FootballScraperService extends BaseScraper {
         timestamp: new Date(),
       };
     } catch (error: any) {
-      this.logger.error(`❌ Error en sincronización de Fútbol: ${error.message}`);
+      this.logger.error(`Error en sincronizacion de Futbol: ${error.message}`);
       await this.logExecution(false, itemsSynced, error.message);
 
       return {

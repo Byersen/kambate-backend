@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { BaseScraper } from './base.scraper';
-import { SyncResult, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
+import { SyncResult, SyncOptions, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
 import axios from 'axios';
 
 @Injectable()
@@ -14,8 +14,9 @@ export class UfcScraperService extends BaseScraper {
     super(prisma);
   }
 
-  async sync(): Promise<SyncResult> {
-    this.logger.log('🥊 Iniciando sincronización de combates UFC...');
+  async sync(options?: SyncOptions): Promise<SyncResult> {
+    const includeDetails = options?.includeDetails ?? true;
+    this.logger.log('Iniciando sincronizacion de combates UFC...');
     let itemsSynced = 0;
 
     try {
@@ -75,13 +76,15 @@ export class UfcScraperService extends BaseScraper {
                 externalId: `ufc-fighter-${fighter2.id}`,
               },
             ],
-            stats: {
-              ufc: {
-                method: method?.substring(0, 50),
-                round: Number.isInteger(round) ? round : 1,
-                time: time?.toString(),
+            ...(includeDetails && {
+              stats: {
+                ufc: {
+                  method: method?.substring(0, 50),
+                  round: Number.isInteger(round) ? round : 1,
+                  time: time?.toString(),
+                },
               },
-            },
+            }),
           };
 
           await this.upsertUnifiedEvent(unifiedEvent);
@@ -89,7 +92,7 @@ export class UfcScraperService extends BaseScraper {
         }
       }
 
-      this.logger.log(`✅ Sincronización UFC finalizada: ${itemsSynced} combates procesados.`);
+      this.logger.log(`Sincronizacion UFC finalizada: ${itemsSynced} combates procesados.`);
       await this.logExecution(true, itemsSynced, `Sincronizados ${itemsSynced} combates de UFC`);
 
       return {
@@ -99,7 +102,7 @@ export class UfcScraperService extends BaseScraper {
         timestamp: new Date(),
       };
     } catch (error: any) {
-      this.logger.error(`❌ Error en sincronización UFC: ${error.message}`);
+      this.logger.error(`Error en sincronizacion UFC: ${error.message}`);
       await this.logExecution(false, itemsSynced, error.message);
 
       return {

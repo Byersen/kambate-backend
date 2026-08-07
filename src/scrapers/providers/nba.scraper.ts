@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { BaseScraper } from './base.scraper';
-import { SyncResult, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
+import { SyncResult, SyncOptions, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
 import axios from 'axios';
 
 @Injectable()
@@ -14,8 +14,9 @@ export class NbaScraperService extends BaseScraper {
     super(prisma);
   }
 
-  async sync(): Promise<SyncResult> {
-    this.logger.log('🏀 Iniciando sincronización de partidos NBA...');
+  async sync(options?: SyncOptions): Promise<SyncResult> {
+    const includeDetails = options?.includeDetails ?? true;
+    this.logger.log('Iniciando sincronizacion de partidos NBA...');
     let itemsSynced = 0;
 
     try {
@@ -50,6 +51,7 @@ export class NbaScraperService extends BaseScraper {
           externalId: `nba-espn-${event.id}`,
           sportSlug: this.sportSlug,
           sportName: this.sportName,
+          leagueSlug: 'nba',
           startDate: new Date(event.date || competition.date),
           status,
           score: `${homeScore} - ${awayScore}`,
@@ -65,20 +67,24 @@ export class NbaScraperService extends BaseScraper {
               externalId: `nba-team-${awayCompetitor.id}`,
             },
           ],
-          stats: {
-            nba: {
-              homePoints: homeScore,
-              awayPoints: awayScore,
-              quarter,
+          ...(includeDetails && {
+            stats: {
+              nba: {
+                homePoints: homeScore,
+                awayPoints: awayScore,
+                quarter,
+              },
             },
-          },
+          }),
         };
 
-        await this.upsertUnifiedEvent(unifiedEvent);
-        itemsSynced++;
+        const saved = await this.upsertUnifiedEvent(unifiedEvent);
+        if (saved) {
+          itemsSynced++;
+        }
       }
 
-      this.logger.log(`✅ Sincronización NBA finalizada: ${itemsSynced} partidos procesados.`);
+      this.logger.log(`Sincronizacion NBA finalizada: ${itemsSynced} partidos procesados.`);
       await this.logExecution(true, itemsSynced, `Sincronizados ${itemsSynced} partidos de NBA`);
 
       return {
@@ -88,7 +94,7 @@ export class NbaScraperService extends BaseScraper {
         timestamp: new Date(),
       };
     } catch (error: any) {
-      this.logger.error(`❌ Error en sincronización NBA: ${error.message}`);
+      this.logger.error(`Error en sincronizacion NBA: ${error.message}`);
       await this.logExecution(false, itemsSynced, error.message);
 
       return {

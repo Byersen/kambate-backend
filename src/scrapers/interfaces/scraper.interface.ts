@@ -6,12 +6,19 @@ export interface SyncResult {
   timestamp: Date;
 }
 
+export interface SyncOptions {
+  tier?: number; // 1 = Top/Favoritos, 2 = Secundarias/Menores
+  includeDetails?: boolean; // true = estadisticas completas (goles, tarjetas, reloj); false = solo estado y marcador basico
+}
+
 export interface UnifiedScrapedEvent {
   externalId: string;
   sportSlug: string;
   sportName: string;
+  leagueSlug?: string;
+  seasonSlug?: string;
   startDate: Date;
-  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'CANCELED';
+  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'CANCELED' | 'ARCHIVED';
   score?: string;
   participants: {
     name: string;
