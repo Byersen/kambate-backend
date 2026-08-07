@@ -43,7 +43,7 @@ export class FootballScraperService extends BaseScraper {
 
       const leaguesToFetch =
         activeLeaguesInDb.length > 0
-          ? activeLeaguesInDb.map((l) => l.slug)
+          ? activeLeaguesInDb.map((l: { slug: string; tier: number }) => l.slug)
           : this.defaultLeagues;
 
       for (const league of leaguesToFetch) {
