@@ -14,14 +14,87 @@ export class UfcScraperService extends BaseScraper {
     super(prisma);
   }
 
+  async syncFighterCatalog(): Promise<number> {
+    this.logger.log('Sincronizando catálogo completo de peleadores de UFC desde rankings oficiales...');
+    let totalFightersSynced = 0;
+    const sport = await this.getOrCreateSport();
+
+    try {
+      // Asegurar que la liga ufc existe en la BD
+      await this.prisma.league.upsert({
+        where: { slug: 'ufc' },
+        update: { name: 'UFC' },
+        create: {
+          slug: 'ufc',
+          name: 'UFC',
+          tier: 1,
+          isActive: true,
+          sportId: sport.id,
+        },
+      });
+
+      const url = 'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/rankings';
+      const response = await axios.get(url, { timeout: 10000 });
+      const rankings = response.data?.rankings || [];
+
+      for (const cat of rankings) {
+        const ranks = cat.ranks || [];
+        for (const r of ranks) {
+          const athlete = r.athlete;
+          if (!athlete) continue;
+
+          const name = athlete.displayName || athlete.name;
+          const logoUrl = athlete.headshot?.href || athlete.flag?.href;
+          const externalId = `ufc-fighter-${athlete.id}`;
+
+          if (name) {
+            await this.getOrCreateParticipant({
+              name,
+              logoUrl,
+              externalId,
+            });
+            totalFightersSynced++;
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Error sincronizando catálogo de peleadores UFC: ${err.message}`);
+    }
+
+    this.logger.log(`Catálogo de UFC sincronizado: ${totalFightersSynced} peleadores registrados.`);
+    return totalFightersSynced;
+  }
+
+  private getDateRangeString(daysPast = 180, daysFuture = 180): string {
+    const now = new Date();
+    const past = new Date(now);
+    past.setDate(now.getDate() - daysPast);
+    const future = new Date(now);
+    future.setDate(now.getDate() + daysFuture);
+
+    const formatDate = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}${m}${day}`;
+    };
+
+    return `${formatDate(past)}-${formatDate(future)}`;
+  }
+
   async sync(options?: SyncOptions): Promise<SyncResult> {
     const includeDetails = options?.includeDetails ?? true;
-    this.logger.log('Iniciando sincronizacion de combates UFC...');
+    const dateRange = this.getDateRangeString(180, 180);
+
+    // Sincronizar catálogo base de peleadores desde los rankings
+    await this.syncFighterCatalog();
+
+    this.logger.log(`Iniciando sincronizacion de combates UFC (Rango Temporada: ${dateRange})...`);
     let itemsSynced = 0;
 
     try {
       const response = await axios.get(
-        'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
+        `https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard?dates=${dateRange}`,
         { timeout: 10000 }
       );
 
@@ -61,6 +134,7 @@ export class UfcScraperService extends BaseScraper {
             externalId,
             sportSlug: this.sportSlug,
             sportName: this.sportName,
+            leagueSlug: 'ufc',
             startDate: new Date(comp.date || event.date),
             status,
             score: scoreText,

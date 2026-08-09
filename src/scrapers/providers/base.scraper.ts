@@ -3,6 +3,57 @@ import { PrismaService } from '../../database/prisma.service';
 import { EventStatus } from '@prisma/client';
 import { SyncResult, SyncOptions, UnifiedScrapedEvent } from '../interfaces/scraper.interface';
 
+const LEAGUE_NAME_MAP: Record<string, string> = {
+  // Europa
+  'esp.1': 'LaLiga EA Sports',
+  'esp.2': 'Segunda División',
+  'eng.1': 'Premier League',
+  'eng.2': 'Championship',
+  'ita.1': 'Serie A',
+  'ita.2': 'Serie B',
+  'ger.1': 'Bundesliga',
+  'ger.2': '2. Bundesliga',
+  'fra.1': 'Ligue 1',
+  'fra.2': 'Ligue 2',
+  'ned.1': 'Eredivisie',
+  'por.1': 'Liga Portugal',
+  'tur.1': 'Süper Lig',
+  // Competiciones UEFA
+  'uefa.champions': 'UEFA Champions League',
+  'uefa.europa': 'UEFA Europa League',
+  'uefa.europa.conf': 'UEFA Conference League',
+  // Sudamérica
+  'conmebol.libertadores': 'CONMEBOL Libertadores',
+  'conmebol.sudamericana': 'Copa Sudamericana',
+  'arg.1': 'Liga Profesional Argentina',
+  'bra.1': 'Brasileirao Serie A',
+  'chi.1': 'Primera División Chile',
+  // Norteamérica
+  'mex.1': 'Liga MX',
+  'usa.1': 'MLS',
+  // Amistosos
+  'club.friendly': 'Amistosos de Clubes',
+  'fifa.friendly': 'Amistosos Selecciones',
+  // Básquetbol
+  'nba': 'NBA',
+  'wnba': 'WNBA',
+  // Otros
+  'ufc': 'UFC',
+  'esports': 'Esports',
+  'lol': 'League of Legends',
+  'valorant': 'Valorant Champions Tour',
+};
+
+const TIER1_SLUGS = new Set([
+  // Fútbol Tier 1
+  'esp.1', 'eng.1', 'ita.1', 'ger.1', 'fra.1',
+  'uefa.champions', 'uefa.europa',
+  'conmebol.libertadores', 'conmebol.sudamericana',
+  'arg.1', 'bra.1', 'chi.1', 'mex.1', 'usa.1',
+  // Otros deportes
+  'nba', 'ufc', 'lol', 'valorant', 'esports',
+]);
+
 export abstract class BaseScraper {
   protected abstract readonly logger: Logger;
   protected abstract readonly sportSlug: string;
@@ -15,7 +66,7 @@ export abstract class BaseScraper {
   protected async getOrCreateSport() {
     return this.prisma.sport.upsert({
       where: { slug: this.sportSlug },
-      update: {},
+      update: { name: this.sportName },
       create: {
         name: this.sportName,
         slug: this.sportSlug,
@@ -67,20 +118,35 @@ export abstract class BaseScraper {
   }
 
   protected async upsertUnifiedEvent(eventData: UnifiedScrapedEvent) {
-    let leagueId: string | undefined = undefined;
+    const sport = await this.getOrCreateSport();
 
+    // Resolve league
+    let leagueId: string | undefined = undefined;
     if (eventData.leagueSlug) {
-      const league = await this.prisma.league.findUnique({
-        where: { slug: eventData.leagueSlug },
+      const slug = eventData.leagueSlug;
+      const leagueName =
+        eventData.stats?.football?.extraStats?.league ||
+        LEAGUE_NAME_MAP[slug] ||
+        slug.toUpperCase();
+      const isTier1 = TIER1_SLUGS.has(slug);
+
+      const league = await this.prisma.league.upsert({
+        where: { slug },
+        update: { name: leagueName },
+        create: {
+          slug,
+          name: leagueName,
+          tier: isTier1 ? 1 : 2,
+          isActive: true,
+          sportId: sport.id,
+        },
       });
 
-      if (league && !league.isActive) {
-        return null;
-      }
-
-      leagueId = league?.id;
+      if (!league.isActive) return null;
+      leagueId = league.id;
     }
 
+    // Resolve season
     let seasonId: string | undefined = undefined;
     if (eventData.seasonSlug) {
       const season = await this.prisma.season.findUnique({
@@ -94,8 +160,7 @@ export abstract class BaseScraper {
       seasonId = currentSeason?.id;
     }
 
-    const sport = await this.getOrCreateSport();
-
+    // Resolve participants
     const participantRecords = [];
     for (const participant of eventData.participants) {
       const p = await this.getOrCreateParticipant(participant);
